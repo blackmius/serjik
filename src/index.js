@@ -10,16 +10,21 @@ document.title = 'serjik';
 let canvas, parent;
 
 
-const SIZE = 32;
+const ONE_BOX_SIZE = 32;
+const MAX_GUESS_ATTEMPTS = 100;
 
-const WIDTH = 16;
-const HEIGHT = 24;
+const WIDTH = 20;
+const HEIGHT = 20;
 
 const rectangles = [];
 
-let mousedown, mousemove, rect, cant, a, b;
+let mousedown, mousemove, rect, cant, diceOne, diceTwo;
 
 let color = 'blue';
+let moveAttempts = 0;
+let redAutoMoves = false;
+let pvpMode = false;
+let mirrorMode = false;
 
 var BrowserText = (function () {
     var canvas = document.createElement('canvas'),
@@ -44,70 +49,182 @@ var BrowserText = (function () {
 
 function mouseup(e) {
     window.removeEventListener('mouseup', mouseup);
-    
     parent.removeChild(rect);
     rect = null;
-    
     if (!cant) {
         const {x, y} = parent.getBoundingClientRect();
-        let sx = Math.floor((Math.min(mousedown.clientX, mousemove.clientX) - x) / SIZE) * SIZE,
-            sy = Math.floor((Math.min(mousedown.clientY, mousemove.clientY) - y) / SIZE) * SIZE,
-            ex = Math.floor((Math.max(mousedown.clientX, mousemove.clientX) - x) / SIZE + 1) * SIZE,
-            ey = Math.floor((Math.max(mousedown.clientY, mousemove.clientY) - y) / SIZE + 1) * SIZE;
-        rect = canvas.rectangle(sx, sy, ex-sx, ey-sy, { strokeWidth: 2, stroke: color, fill: color});
-    
-        let newText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        newText.setAttributeNS(null, "stroke", color);
-        let area = (ex-sx)*(ey-sy) / SIZE / SIZE + '';
-        var textNode = document.createTextNode(area);
-        newText.appendChild(textNode);
-    
-        const width = BrowserText.getWidth(area, 48);
-    
-        newText.setAttributeNS(null, "x", (sx + ex) / 2 - width / 2);    
-        newText.setAttributeNS(null, "y", (sy + ey) / 2 + 16);
-    
-        rect.appendChild(newText)
-    
-        parent.appendChild(rect);
-    
-        rectangles.push(
-            [color, sx, sy, ex, ey]
-        );
+        let sx = Math.floor((Math.min(mousedown.clientX, mousemove.clientX) - x) / ONE_BOX_SIZE),
+            sy = Math.floor((Math.min(mousedown.clientY, mousemove.clientY) - y) / ONE_BOX_SIZE),
+            ex = Math.floor((Math.max(mousedown.clientX, mousemove.clientX) - x) / ONE_BOX_SIZE + 1),
+            ey = Math.floor((Math.max(mousedown.clientY, mousemove.clientY) - y) / ONE_BOX_SIZE + 1);
 
+        drawRectangleWithText(sx, sy, ex, ey, color);
+        addRectangle(color, sx, sy, ex, ey);
         nextMove();
     }
-
     mousedown = null;
 }
 
+function addRectangle(side, startX, startY, endX, endY) {
+    rectangles.push(
+        {
+            side: side,
+            startX: startX,
+            startY: startY,
+            endX: endX,
+            endY: endY
+        }
+    );
+}
+
+function makeAutomaticMove(startX, startY, endX, endY) {
+
+    let moveForbidden = isMoveForbidden(startX, startY, endX, endY);
+    // console.log(startX+'-'+endX+', '+startY+'-'+endY+', res '+ moveForbidden);
+    if (!moveForbidden) {
+        drawRectangleWithText(startX, startY, endX, endY, color);
+
+        addRectangle(color, startX, startY, endX, endY);
+        nextMove();
+    } else{
+        moveAttempts++;
+        if (moveAttempts > MAX_GUESS_ATTEMPTS) {
+            return;
+        }
+        //just something for testing/filling field
+        const endXgen = Math.floor(Math.random() * WIDTH + 1);
+        const endYgen = Math.floor(Math.random() * HEIGHT + 1);
+        let d1 = diceOne;
+        let d2 = diceTwo;
+        if (Math.random() > 0.5) {
+            d1 = diceTwo;
+            d2 = diceOne;
+        }
+        makeAutomaticMove(endXgen - d1, endYgen -d2, endXgen, endYgen);
+    }
+}
+
+function checkIfAutoMoveEnabled() {
+    if (countSum('blue')+ countSum('red') === HEIGHT * WIDTH) {
+        redAutoMoves = false;
+        return false;
+    } else if(redAutoMoves)
+        return true;
+    else if (color === 'blue' && !pvpMode)
+        return true;
+    return false;
+
+}
+
+function toggleAutoMoves() {
+    if (rectangles.length > 1) {
+        redAutoMoves = !redAutoMoves;
+        page.update();
+    }else {
+        console.log('Autoplay lags when no rectangles present')
+    }
+}
+
 function nextMove() {
-    a = Math.floor(Math.random() * 6 + 1);
-    b = Math.floor(Math.random() * 6 + 1);
-    
-    color = ['blue', 'red'][+(color == 'blue')];
+    if (!(mirrorMode && color ==='red')) {
+        diceOne = Math.floor(Math.random() * 6 + 1);
+        diceTwo = Math.floor(Math.random() * 6 + 1);
+    }
+
+    color = ['blue', 'red'][+(color === 'blue')];
 
     page.update();
+    if (checkIfAutoMoveEnabled()){
+        const endX = WIDTH;
+        const endY = HEIGHT;
+        const startX = endX - diceOne;
+        const startY = endY - diceTwo;
+        moveAttempts = 0;
+
+        makeAutomaticMove(startX, startY, endX, endY);
+
+        if (moveAttempts > MAX_GUESS_ATTEMPTS) {
+            console.log('Skipping [' + diceOne +',' + diceTwo+']');
+            nextMove();
+        }
+    }
 }
 
 nextMove();
 
+function drawRectangleWithText(startX, startY, endX, endY, fillColor) {
+    const startXpx = startX * ONE_BOX_SIZE;
+    const startYpx = startY * ONE_BOX_SIZE;
+    const endXpx = endX * ONE_BOX_SIZE;
+    const endYpx = endY * ONE_BOX_SIZE;
+    rect = canvas.rectangle(startXpx, startYpx, endXpx - startXpx, endYpx - startYpx, {strokeWidth: 2, stroke: color, fill: fillColor});
+
+    let newText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    newText.setAttributeNS(null, "stroke", color);
+    let area = (endXpx - startXpx) * (endYpx - startYpx) / ONE_BOX_SIZE / ONE_BOX_SIZE + '';
+    const textNode = document.createTextNode(area);
+    newText.appendChild(textNode);
+
+    const width = BrowserText.getWidth(area, 48);
+
+    newText.setAttributeNS(null, "x", (startXpx + endXpx) / 2 - width / 2);
+    newText.setAttributeNS(null, "y", (startYpx + endYpx) / 2 + (ONE_BOX_SIZE/2));
+
+    rect.appendChild(newText);
+
+    parent.appendChild(rect);
+}
+
+function isMoveForbidden(sx, sy, ex, ey) {
+    let moveIsInvalid = false;
+    if(sx < 0 || sy < 0 || ex < 0 || ey < 0){
+        moveIsInvalid = true;
+    }if(sx > WIDTH || sy > HEIGHT || ex > WIDTH || ey > HEIGHT){
+        moveIsInvalid = true;
+    }else if (rectangles.length < 2 && (sx !== 0 || sy !== 0) && (ex !== WIDTH || ey !== HEIGHT)) {
+        moveIsInvalid = true;
+    } else if (rectangles.length > 1) {
+        let good;
+        for (const rectangle of rectangles) {
+            if (rectangle.startX < ex && rectangle.endX > sx && rectangle.startY < ey && rectangle.endY > sy) {
+                moveIsInvalid = true;
+                break;
+            }
+            if (rectangle.side === color && (
+                (rectangle.endX > sx && rectangle.startX < ex && (rectangle.endY === sy || rectangle.startY === ey)) ||
+                (rectangle.endY > sy && rectangle.startY < ey && (rectangle.endX === sx || rectangle.startX === ex))
+            )) {
+                good = true;
+            }
+        }
+        if (!good) moveIsInvalid = true;
+    }
+
+    let w = (ex - sx);
+    let h = (ey - sy);
+
+    if ((w !== diceOne || h !== diceTwo) && (h !== diceOne || w !== diceTwo))
+        moveIsInvalid = true;
+
+    return moveIsInvalid
+}
+
 const svg = z._svg({
-    width: (4+WIDTH*SIZE)+'px',
-    height: (4+HEIGHT*SIZE)+'px',
+    width: (4+WIDTH*ONE_BOX_SIZE)+'px',
+    height: (4+HEIGHT*ONE_BOX_SIZE)+'px',
     on$created(e) {
         parent = e.target;
         canvas = rough.svg(e.target);
         const stroke = '#777';
         parent.appendChild(
-            canvas.rectangle(2, 2, WIDTH*SIZE, HEIGHT*SIZE, {stroke}));
+            canvas.rectangle(2, 2, WIDTH*ONE_BOX_SIZE, HEIGHT*ONE_BOX_SIZE, {stroke}));
         for (let x = 0; x < WIDTH; x++) {
             parent.appendChild(
-                canvas.line(2+x*SIZE, 2, x*SIZE, HEIGHT*SIZE, {stroke}));
+                canvas.line(2+x*ONE_BOX_SIZE, 2, x*ONE_BOX_SIZE, HEIGHT*ONE_BOX_SIZE, {stroke}));
         }
         for (let y = 0; y < HEIGHT; y++) {
             parent.appendChild(
-                canvas.line(2, 2+y*SIZE, WIDTH*SIZE, y*SIZE, {stroke}));
+                canvas.line(2, 2+y*ONE_BOX_SIZE, WIDTH*ONE_BOX_SIZE, y*ONE_BOX_SIZE, {stroke}));
         }
     },
     onmousedown(e) {
@@ -121,79 +238,75 @@ const svg = z._svg({
         mousemove = e;
         if (mousedown) {
             parent.removeChild(rect);
-            
+
             const {x, y} = parent.getBoundingClientRect();
-            let sx = Math.floor((Math.min(mousedown.clientX, mousemove.clientX) - x) / SIZE) * SIZE,
-                sy = Math.floor((Math.min(mousedown.clientY, mousemove.clientY) - y) / SIZE) * SIZE,
-                ex = Math.floor((Math.max(mousedown.clientX, mousemove.clientX) - x) / SIZE + 1) * SIZE,
-                ey = Math.floor((Math.max(mousedown.clientY, mousemove.clientY) - y) / SIZE + 1) * SIZE;
+            let sx = Math.floor((Math.min(mousedown.clientX, mousemove.clientX) - x) / ONE_BOX_SIZE),
+                sy = Math.floor((Math.min(mousedown.clientY, mousemove.clientY) - y) / ONE_BOX_SIZE),
+                ex = Math.floor((Math.max(mousedown.clientX, mousemove.clientX) - x) / ONE_BOX_SIZE + 1),
+                ey = Math.floor((Math.max(mousedown.clientY, mousemove.clientY) - y) / ONE_BOX_SIZE + 1);
 
-            cant = false;
-            if (rectangles.length < 2 && (sx != 0 || sy != 0) && (ex != WIDTH*SIZE || ey != HEIGHT*SIZE)) {
-                cant = true;
-            } else if (rectangles.length > 1) {
-                let good;
-                for (const [c, sx1, sy1, ex1, ey1] of rectangles) {
-                    if (sx1 < ex && ex1 > sx && sy1 < ey && ey1 > sy) {
-                        cant = true;
-                        break;
-                    }
-                    if (c == color && (
-                        (ex1 > sx && sx1 < ex && (ey1 == sy || sy1 == ey)) ||
-                        (ey1 > sy && sy1 < ey && (ex1 == sx || sx1 == ex))
-                    )) {
-                        good = true;
-                    }
-                }
-                if (!good) cant = true;
-            }
+            cant = isMoveForbidden(sx, sy, ex, ey);
 
-            let w = (ex - sx) / SIZE;
-            let h = (ey - sy) / SIZE;
-
-            if ((w != a || h != b) && (h != a || w != b))
-                cant = true;
-            
-            let oldc = color;
+            let oldColor = color;
             if (cant)
-                color = '#333'
-            rect = canvas.rectangle(2+sx, 2+sy, ex-sx, ey-sy, {fill: cant ? color : undefined, strokeWidth: 2, stroke: color});
+                color = '#333';
 
-            let newText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-            newText.setAttributeNS(null, "stroke", color);
-            let area = (ex-sx)*(ey-sy) / SIZE / SIZE + '';
-            var textNode = document.createTextNode(area);
-            newText.appendChild(textNode);
-
-            const width = BrowserText.getWidth(area, 48);
-
-            newText.setAttributeNS(null, "x", (sx + ex) / 2 - width / 2);    
-            newText.setAttributeNS(null, "y", (sy + ey) / 2 + 16);
-
-            rect.appendChild(newText)
-
-            parent.appendChild(rect);
+            drawRectangleWithText(sx,sy,ex,ey,cant ? color : undefined);
 
             if (cant)
-                color = oldc;
+                color = oldColor;
         }
     }
-})
+});
 
-const roll = z._button({
-    onclick: nextMove
-}, 'Skip turn')
+function enablePvP() {
+    pvpMode = !pvpMode;
+    page.update();
+}
+function enableMirrorMode() {
+    mirrorMode = !mirrorMode;
+    page.update();
+}
 
-function cumsum(c) {
-    return rectangles.filter(i=>i[0]==c).reduce((a, b) => a+(b[3]-b[1])*(b[4]-b[2])/SIZE/SIZE, 0);
+function countSum(player) {
+    return rectangles.filter(rectangle=>rectangle.side === player).reduce((a, b) => a+(b.endX-b.startX)*(b.endY-b.startY), 0);
+}
+
+function findWinner() {
+    const half = HEIGHT*WIDTH/2;
+    const redCount =  countSum('red');
+    const blueCount =  countSum('blue');
+    if (redCount > half) {
+        return z._span({style:'color:red'}, 'Red wins');
+    } else if (blueCount > half) {
+        return z._span({style:'color:blue'}, 'Blue wins');
+    }
+    return  z._span({style:'color:black'}, 'No winner yet');
 }
 
 const Body = z._(
-    svg, roll,
-    _=>z.f1(`${a}, ${b}`),
+    svg,
+    z._button({
+        onclick: nextMove
+    }, 'Skip turn'),
+    z._button({
+        onclick: enablePvP
+    }, 'PvP Mode'),
+    z._button({
+        onclick: enableMirrorMode
+    }, 'Mirror Mode'),
+    z._button({
+        onclick: toggleAutoMoves
+    }, 'Auto Play'),
     _=>z.f1('Now is ', z._span({style:'color:'+color}, color), ' turn'),
-    _=>z.f1(z._span({style:'color:blue'}, 'Blue'), ': ' + cumsum('blue')),
-    _=>z.f1(z._span({style:'color:red'}, 'Red'), ': '+ cumsum('red')),
+    _=>z.f1(`${diceOne}, ${diceTwo}`),
+    _=>z.f1('PvP: ' + (pvpMode ?'On':'Off')),
+    _=>z.f1('Mirror: ' + (mirrorMode ?'On':'Off')),
+    _=>z.f1('Auto Play (next move): ' + (redAutoMoves ?'On':'Off')),
+    _=>z.f1(z._span({style:'color:blue'}, 'Blue'), ': ' + countSum('blue')),
+    _=>z.f1(z._span({style:'color:red'}, 'Red'), ': '+ countSum('red')),
+    _=>z.f1(findWinner()),
+
 );
 
-page.setBody(Body)
+page.setBody(Body);

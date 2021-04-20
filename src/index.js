@@ -1,7 +1,7 @@
 import 'normalize.css';
 import 'style.css';
 
-import { z, page } from 'lib/2ombular';
+import {page, z} from 'lib/2ombular';
 
 import rough from 'roughjs';
 
@@ -21,8 +21,7 @@ const rectangles = [];
 let mousedown, mousemove, rect, cant, diceOne, diceTwo;
 
 let color = 'blue';
-let moveAttempts = 0;
-let redAutoMoves = false;
+let autoPlayMode = false;
 let pvpMode = false;
 let mirrorMode = false;
 
@@ -58,9 +57,7 @@ function mouseup(e) {
             ex = Math.floor((Math.max(mousedown.clientX, mousemove.clientX) - x) / ONE_BOX_SIZE + 1),
             ey = Math.floor((Math.max(mousedown.clientY, mousemove.clientY) - y) / ONE_BOX_SIZE + 1);
 
-        drawRectangleWithText(sx, sy, ex, ey, color);
-        addRectangle(color, sx, sy, ex, ey);
-        nextMove();
+        drawAndSaveValidMove(sx, sy, ex, ey, color);
     }
     mousedown = null;
 }
@@ -77,38 +74,56 @@ function addRectangle(side, startX, startY, endX, endY) {
     );
 }
 
-function makeAutomaticMove(startX, startY, endX, endY) {
+function drawAndSaveValidMove(startX, startY, endX, endY, withColor) {
+    drawRectangleWithText(startX, startY, endX, endY, withColor);
+    addRectangle(withColor, startX, startY, endX, endY);
+    page.update();
+    nextMove();
+}
 
-    let moveForbidden = isMoveForbidden(startX, startY, endX, endY);
-    // console.log(startX+'-'+endX+', '+startY+'-'+endY+', res '+ moveForbidden);
-    if (!moveForbidden) {
-        drawRectangleWithText(startX, startY, endX, endY, color);
+function tryMakingTwoMoves(endXgen, endYgen, drawColor) {
+    let success = false;
+    if (!isMoveForbidden(endXgen - diceOne, endYgen - diceTwo, endXgen, endYgen)) {
+        drawAndSaveValidMove(endXgen - diceOne, endYgen - diceTwo, endXgen, endYgen, drawColor);
+        success = true;
+    } else if (!isMoveForbidden(endXgen - diceTwo, endYgen - diceOne, endXgen, endYgen)) {
+        drawAndSaveValidMove(endXgen - diceTwo, endYgen - diceOne, endXgen, endYgen, drawColor);
+        success = true;
+    }
+    return success;
+}
 
-        addRectangle(color, startX, startY, endX, endY);
-        nextMove();
-    } else{
-        moveAttempts++;
-        if (moveAttempts > MAX_GUESS_ATTEMPTS) {
-            return;
-        }
+function makeAutomaticMove() {
+    if (tryMakingTwoMoves(WIDTH, HEIGHT, color)){
+        return;
+    }
+
+    //try some random moves
+    for (let i = 0; i < MAX_GUESS_ATTEMPTS; i++) {
         //just something for testing/filling field
         const endXgen = Math.floor(Math.random() * WIDTH + 1);
         const endYgen = Math.floor(Math.random() * HEIGHT + 1);
-        let d1 = diceOne;
-        let d2 = diceTwo;
-        if (Math.random() > 0.5) {
-            d1 = diceTwo;
-            d2 = diceOne;
+        if (tryMakingTwoMoves(endXgen, endYgen, color)){
+            return;
         }
-        makeAutomaticMove(endXgen - d1, endYgen -d2, endXgen, endYgen);
     }
+    //just check every possible move
+    for (let x =0; x < WIDTH; x++){
+        for (let y =0; y < HEIGHT; y++){
+            if (tryMakingTwoMoves(x, y, color)){
+                return;
+            }
+        }
+    }
+    console.log('Skipping [' + diceOne + ',' + diceTwo + ']');
+    nextMove();
 }
 
 function checkIfAutoMoveEnabled() {
     if (countSum('blue')+ countSum('red') === HEIGHT * WIDTH) {
-        redAutoMoves = false;
+        autoPlayMode = false;
         return false;
-    } else if(redAutoMoves)
+    } else if(autoPlayMode)
         return true;
     else if (color === 'blue' && !pvpMode)
         return true;
@@ -116,10 +131,11 @@ function checkIfAutoMoveEnabled() {
 
 }
 
-function toggleAutoMoves() {
+function toggleAutoPlay() {
     if (rectangles.length > 1) {
-        redAutoMoves = !redAutoMoves;
+        autoPlayMode = !autoPlayMode;
         page.update();
+        makeAutomaticMove();
     }else {
         console.log('Autoplay lags when no rectangles present')
     }
@@ -135,18 +151,7 @@ function nextMove() {
 
     page.update();
     if (checkIfAutoMoveEnabled()){
-        const endX = WIDTH;
-        const endY = HEIGHT;
-        const startX = endX - diceOne;
-        const startY = endY - diceTwo;
-        moveAttempts = 0;
-
-        makeAutomaticMove(startX, startY, endX, endY);
-
-        if (moveAttempts > MAX_GUESS_ATTEMPTS) {
-            console.log('Skipping [' + diceOne +',' + diceTwo+']');
-            nextMove();
-        }
+        makeAutomaticMove();
     }
 }
 
@@ -296,13 +301,12 @@ const Body = z._(
         onclick: enableMirrorMode
     }, 'Mirror Mode'),
     z._button({
-        onclick: toggleAutoMoves
+        onclick: toggleAutoPlay
     }, 'Auto Play'),
     _=>z.f1('Now is ', z._span({style:'color:'+color}, color), ' turn'),
     _=>z.f1(`${diceOne}, ${diceTwo}`),
     _=>z.f1('PvP: ' + (pvpMode ?'On':'Off')),
     _=>z.f1('Mirror: ' + (mirrorMode ?'On':'Off')),
-    _=>z.f1('Auto Play (next move): ' + (redAutoMoves ?'On':'Off')),
     _=>z.f1(z._span({style:'color:blue'}, 'Blue'), ': ' + countSum('blue')),
     _=>z.f1(z._span({style:'color:red'}, 'Red'), ': '+ countSum('red')),
     _=>z.f1(findWinner()),

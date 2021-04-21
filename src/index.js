@@ -182,19 +182,15 @@ function drawRectangleWithText(startX, startY, endX, endY, fillColor) {
 
 function isMoveForbidden(sx, sy, ex, ey) {
     let moveIsInvalid = false;
-    if(sx < 0 || sy < 0 || ex < 0 || ey < 0){
+    if (sx < 0 || sy < 0 || ex < 0 || ey < 0){
         moveIsInvalid = true;
-    }if(sx > WIDTH || sy > HEIGHT || ex > WIDTH || ey > HEIGHT){
+    } if(sx > WIDTH || sy > HEIGHT || ex > WIDTH || ey > HEIGHT){
         moveIsInvalid = true;
-    }else if (rectangles.length < 2 && (sx !== 0 || sy !== 0) && (ex !== WIDTH || ey !== HEIGHT)) {
+    } else if (rectangles.length < 2 && (sx !== 0 || sy !== 0) && (ex !== WIDTH || ey !== HEIGHT)) {
         moveIsInvalid = true;
     } else if (rectangles.length > 1) {
         let good;
         for (const rectangle of rectangles) {
-            if (rectangle.startX < ex && rectangle.endX > sx && rectangle.startY < ey && rectangle.endY > sy) {
-                moveIsInvalid = true;
-                break;
-            }
             if (rectangle.side === color && (
                 (rectangle.endX > sx && rectangle.startX < ex && (rectangle.endY === sy || rectangle.startY === ey)) ||
                 (rectangle.endY > sy && rectangle.startY < ey && (rectangle.endX === sx || rectangle.startX === ex))
@@ -203,6 +199,15 @@ function isMoveForbidden(sx, sy, ex, ey) {
             }
         }
         if (!good) moveIsInvalid = true;
+    }
+    
+    if (rectangles.length > 0) {
+        for (const rectangle of rectangles) {
+            if (rectangle.startX < ex && rectangle.endX > sx && rectangle.startY < ey && rectangle.endY > sy) {
+                moveIsInvalid = true;
+                break;
+            }
+        }
     }
 
     let w = (ex - sx);

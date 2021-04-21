@@ -310,7 +310,7 @@ const Body = z._(
     _=>z.f1(z._span({style:'color:blue'}, 'Blue'), ': ' + countSum('blue')),
     _=>z.f1(z._span({style:'color:red'}, 'Red'), ': '+ countSum('red')),
     _=>z.f1(findWinner()),
-
+    z.pidors('@Made by blackmius & SvyatLi pidors for serjik')
 );
 
 page.setBody(Body);

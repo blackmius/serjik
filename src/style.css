@@ -14,3 +14,4 @@ svg { margin: auto; position: absolute; top: 0; bottom: 0; left: 0; right: 0; }
 text { fill: white; stroke-width: 2px; font-size: 48px; }
 button { padding: 8px; cursor: pointer; }
 
+.pidors { position: absolute; bottom: 32px; left: 32px; color: #555; }
